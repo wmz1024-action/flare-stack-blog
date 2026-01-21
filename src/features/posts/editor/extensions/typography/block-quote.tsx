@@ -7,7 +7,7 @@ export const BlockQuoteExtension = Blockquote.extend({
       "blockquote",
       mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
         class:
-          "my-12 pl-8 border-l-[3px] border-foreground py-4 italic text-muted-foreground font-serif text-xl md:text-3xl leading-relaxed tracking-tight",
+          "my-6 pl-4 border-l-2 border-muted-foreground/30 italic text-muted-foreground font-serif text-lg leading-relaxed tracking-tight",
       }),
       // Content renders here (0 = content placeholder, must be only child)
       0,
