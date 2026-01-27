@@ -46,16 +46,6 @@ export const Route = createFileRoute("/_public/post/$slug")({
       throw notFound();
     }
 
-    if (post.contentJson) {
-      const { extractCodeLanguages } =
-        await import("@/features/posts/utils/content");
-      const { loadLanguage } = await import("@/lib/shiki");
-      const languages = extractCodeLanguages(post.contentJson);
-
-      // Parallel load all required languages
-      await Promise.all(languages.map((lang) => loadLanguage(lang)));
-    }
-
     return post;
   },
   head: ({ loaderData: post }) => ({
