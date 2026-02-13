@@ -86,7 +86,7 @@
     },
     {
       "tag": "password-hasher-v1",
-      "new_classes": ["PasswordHasher"],
+      "new_sqlite_classes": ["PasswordHasher"],
     },
   ],
   "env": {
