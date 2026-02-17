@@ -42,12 +42,12 @@ bun run test  # 运行测试
 
 ### 分支策略
 
-| 分支类型 | 命名规范 | 用途 |
-|---------|---------|------|
-| `main` | - | 生产分支，受保护 |
-| `feature/*` | `feature/add-rss` | 新功能开发 |
-| `fix/*` | `fix/login-error` | Bug 修复 |
-| `refactor/*` | `refactor/cache-layer` | 代码重构 |
+| 分支类型     | 命名规范               | 用途             |
+| ------------ | ---------------------- | ---------------- |
+| `main`       | -                      | 生产分支，受保护 |
+| `feature/*`  | `feature/add-rss`      | 新功能开发       |
+| `fix/*`      | `fix/login-error`      | Bug 修复         |
+| `refactor/*` | `refactor/cache-layer` | 代码重构         |
 
 ### 提交信息
 
@@ -90,11 +90,16 @@ export const PostRepo = {
 // posts.service.ts
 export async function findPostBySlug(
   context: DbContext & { executionCtx: ExecutionContext },
-  data: { slug: string }
+  data: { slug: string },
 ) {
   const fetcher = () => PostRepo.findPostBySlug(context.db, data.slug);
   const version = await CacheService.getVersion(context, "posts:detail");
-  return CacheService.get(context, POSTS_CACHE_KEYS.detail(version, data.slug), PostSchema, fetcher);
+  return CacheService.get(
+    context,
+    POSTS_CACHE_KEYS.detail(version, data.slug),
+    PostSchema,
+    fetcher,
+  );
 }
 ```
 
@@ -108,7 +113,7 @@ import { ok, err } from "@/lib/error";
 // 服务层
 export async function createTag(context: DbContext, name: string) {
   const exists = await TagRepo.nameExists(context.db, name);
-  if (exists) return err({ reason: "TAG_NAME_ALREADY_EXISTS" as const });
+  if (exists) return err({ reason: "TAG_NAME_ALREADY_EXISTS" });
 
   const tag = await TagRepo.insert(context.db, { name });
   return ok(tag);
@@ -140,7 +145,11 @@ dbMiddleware → sessionMiddleware → authMiddleware → adminMiddleware
 // 公开接口 + 限流
 export const createCommentFn = createServerFn()
   .middleware([
-    createRateLimitMiddleware({ capacity: 10, interval: "1m", key: "comments:create" }),
+    createRateLimitMiddleware({
+      capacity: 10,
+      interval: "1m",
+      key: "comments:create",
+    }),
   ])
   .handler(({ data, context }) => CommentService.createComment(context, data));
 
@@ -159,10 +168,10 @@ export const updatePostFn = createServerFn()
 
 双层缓存架构：
 
-| 层 | 技术 | 用途 |
-|----|----|------|
+| 层  | 技术                  | 用途                                        |
+| --- | --------------------- | ------------------------------------------- |
 | CDN | Cache-Control headers | 边缘缓存，通过页面 headers 或 Hono 路由设置 |
-| KV | 版本化 key | 服务端缓存，通过 `CacheService` 管理 |
+| KV  | 版本化 key            | 服务端缓存，通过 `CacheService` 管理        |
 
 失效模式：
 
@@ -182,9 +191,10 @@ Query Key 工厂：
 ```typescript
 export const POSTS_KEYS = {
   all: ["posts"] as const,
-  lists: ["posts", "list"] as const,      // 父 key（静态，用于批量失效）
-  list: (filters?: { tag?: string }) =>   // 子 key（函数，用于具体查询）
-    ["posts", "list", filters] as const,
+  lists: ["posts", "list"] as const, // 父 key（静态，用于批量失效）
+  list: (
+    filters?: { tag?: string }, // 子 key（函数，用于具体查询）
+  ) => ["posts", "list", filters] as const,
 };
 ```
 
@@ -198,7 +208,7 @@ export const Route = createFileRoute("/_public/post/$slug")({
   loader: async ({ context, params }) => {
     // ensureQueryData: 获取并缓存，如果已有数据则不重新请求
     const post = await context.queryClient.ensureQueryData(
-      postBySlugQuery(params.slug)
+      postBySlugQuery(params.slug),
     );
     if (!post) throw notFound();
 
@@ -243,16 +253,16 @@ queryClient.invalidateQueries({ queryKey: POSTS_KEYS.list({ tag: "React" }) });
 
 ## 命名规范
 
-| 类型 | 规范 | 示例 |
-|------|------|------|
-| 组件文件 | kebab-case | `post-item.tsx` |
-| 服务文件 | `<name>.service.ts` | `posts.service.ts` |
-| 数据文件 | `<name>.data.ts` | `posts.data.ts` |
-| Server Functions | camelCase + `Fn` | `getPostsFn` |
-| React 组件 | PascalCase | `PostItem` |
-| 变量/函数 | camelCase | `getPosts` |
-| 类型/接口 | PascalCase | `PostItemProps` |
-| 常量 | SCREAMING_SNAKE_CASE | `CACHE_CONTROL` |
+| 类型             | 规范                 | 示例               |
+| ---------------- | -------------------- | ------------------ |
+| 组件文件         | kebab-case           | `post-item.tsx`    |
+| 服务文件         | `<name>.service.ts`  | `posts.service.ts` |
+| 数据文件         | `<name>.data.ts`     | `posts.data.ts`    |
+| Server Functions | camelCase + `Fn`     | `getPostsFn`       |
+| React 组件       | PascalCase           | `PostItem`         |
+| 变量/函数        | camelCase            | `getPosts`         |
+| 类型/接口        | PascalCase           | `PostItemProps`    |
+| 常量             | SCREAMING_SNAKE_CASE | `CACHE_CONTROL`    |
 
 ## 测试
 
@@ -300,6 +310,7 @@ const response = await testRequest(app, "/api/posts");
 ## 需要帮助？
 
 如有疑问，可以：
+
 - 在 GitHub Discussions 中提问
 - 在 Telegram 群组中提问
 - 参考 `.agent/skills/` 目录下的开发指南
