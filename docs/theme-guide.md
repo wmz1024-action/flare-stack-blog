@@ -42,7 +42,7 @@ vite.config.ts
 | `VerifyEmailPage`                                       | 邮箱验证页                     |
 | `ProfilePage`                                           | 个人资料页                     |
 
-> **骨架屏**用于 TanStack Router 的 `pendingComponent`，在数据加载期间展示占位 UI。如果不需要加载态，返回 `null` 即可。
+> **骨架屏**用于 TanStack Router 的 `pendingComponent`，在数据加载期间展示占位 UI。
 
 ### `contract/layouts.ts` — 布局 Props
 
@@ -97,6 +97,8 @@ interface PostsPageProps {
 ```
 src/features/theme/themes/<your-theme>/
 ├── index.ts                  # 主题入口，导出满足 ThemeComponents 的对象
+├── styles/
+│   └── index.css             # 主题私有样式（颜色变量、字体、排版等）
 ├── layouts/
 │   ├── public-layout.tsx
 │   ├── auth-layout.tsx
@@ -235,3 +237,6 @@ const buildEnvSchema = z.object({
 
 - **不要修改 contract 文件**：契约是框架与主题之间的接口约定，业务逻辑依赖它稳定。如有新的业务需求需要暴露更多数据，请提 issue 或 PR。
 - **主题之间相互独立**：不同主题的代码不应相互引用，避免耦合。
+- **样式隔离**：项目采用分层样式架构：
+  - `src/styles.css` — 全局公共样式（TailwindCSS 入口、dark/light variant 等），所有主题共享，**主题不应修改此文件**。
+  - `themes/<your-theme>/styles/` — 主题私有样式（颜色变量、字体、排版、组件样式等），在主题 `index.ts` 中通过 `import "./styles/index.css"` 引入，确保只在该主题激活时加载。
