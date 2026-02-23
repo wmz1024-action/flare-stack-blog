@@ -13,6 +13,7 @@ import type {
   UpdatePostInput,
 } from "@/features/posts/posts.schema";
 import * as CacheService from "@/features/cache/cache.service";
+import { isFuturePublishDate } from "@/features/posts/utils/date";
 import { syncPostMedia } from "@/features/posts/data/post-media.data";
 import * as PostRepo from "@/features/posts/data/posts.data";
 import {
@@ -369,11 +370,15 @@ export async function startPostProcessWorkflow(
     }
   }
 
+  const isFuture =
+    !!publishedAtISO && isFuturePublishDate(publishedAtISO, data.clientToday);
+
   await context.env.POST_PROCESS_WORKFLOW.create({
     params: {
       postId: data.id,
       isPublished: data.status === "published",
       publishedAt: publishedAtISO,
+      isFuturePost: isFuture,
     },
   });
 
@@ -388,13 +393,10 @@ export async function startPostProcessWorkflow(
   }
 
   // If this is a future post, create a new scheduled publish workflow
-  if (data.status === "published" && publishedAtISO) {
-    const publishDate = new Date(publishedAtISO);
-    if (publishDate.getTime() > Date.now()) {
-      await context.env.SCHEDULED_PUBLISH_WORKFLOW.create({
-        id: scheduledId,
-        params: { postId: data.id, publishedAt: publishedAtISO },
-      });
-    }
+  if (data.status === "published" && isFuture) {
+    await context.env.SCHEDULED_PUBLISH_WORKFLOW.create({
+      id: scheduledId,
+      params: { postId: data.id, publishedAt: publishedAtISO! },
+    });
   }
 }

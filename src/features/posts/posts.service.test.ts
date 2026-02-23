@@ -507,6 +507,7 @@ describe("PostService", () => {
       await PostService.startPostProcessWorkflow(adminContext, {
         id,
         status: "published",
+        clientToday: new Date().toISOString().slice(0, 10),
       });
 
       expect(
@@ -516,6 +517,7 @@ describe("PostService", () => {
           postId: id,
           isPublished: true,
           publishedAt: expect.any(String),
+          isFuturePost: false,
         },
       });
     });
@@ -538,6 +540,7 @@ describe("PostService", () => {
       await PostService.startPostProcessWorkflow(adminContext, {
         id,
         status: "published",
+        clientToday: new Date().toISOString().slice(0, 10),
       });
 
       // Verify publishedAt was set

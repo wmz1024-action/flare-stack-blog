@@ -11,6 +11,7 @@ declare global {
     postId: number;
     isPublished: boolean;
     publishedAt?: string;
+    isFuturePost?: boolean;
   }
 
   interface ScheduledPublishWorkflowParams {
