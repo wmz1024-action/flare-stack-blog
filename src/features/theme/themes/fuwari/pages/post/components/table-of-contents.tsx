@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TableOfContentsItem } from "@/features/posts/utils/toc";
 import { cn } from "@/lib/utils";
 
@@ -67,67 +67,87 @@ export default function TableOfContents({
     return () => window.removeEventListener("scroll", handleScrollVisibility);
   }, []);
 
-  // Intersection Observer for range highlighting
+  // Section-based active heading detection (matches original Fuwari logic)
+  // For each heading, its "section" extends from the heading to the next heading.
+  // Any section even partially visible in the viewport is marked active.
+  const computeActiveHeadings = useCallback(() => {
+    if (headers.length === 0) return;
+
+    const active: Array<boolean> = new Array(headers.length).fill(false);
+
+    for (let i = 0; i < headers.length; i++) {
+      const heading = document.getElementById(headers[i].id);
+      if (!heading) continue;
+
+      const sectionTop = heading.getBoundingClientRect().top;
+
+      // Section bottom = next heading's top, or end of document for last heading
+      let sectionBottom: number;
+      if (i < headers.length - 1) {
+        const nextHeading = document.getElementById(headers[i + 1].id);
+        sectionBottom = nextHeading
+          ? nextHeading.getBoundingClientRect().top
+          : window.innerHeight;
+      } else {
+        // Last heading: section extends to end of content
+        sectionBottom =
+          document.documentElement.scrollHeight -
+          window.scrollY -
+          window.scrollY +
+          window.innerHeight;
+        // Simpler: just use a value that's always below viewport if content extends
+        const contentEnd =
+          document.documentElement.scrollHeight - window.scrollY;
+        sectionBottom = contentEnd;
+      }
+
+      // Check if any part of this section is visible in viewport (matching original fallback logic)
+      const isInViewport =
+        (sectionTop >= 0 && sectionTop < window.innerHeight) ||
+        (sectionBottom > 0 && sectionBottom <= window.innerHeight) ||
+        (sectionTop < 0 && sectionBottom > window.innerHeight);
+
+      if (isInViewport) {
+        active[i] = true;
+      } else if (sectionTop > window.innerHeight) {
+        break;
+      }
+    }
+
+    // Find last contiguous block of active headings (matching original toggleActiveHeading logic)
+    const newActiveIndices: Array<number> = [];
+    let i = active.length - 1;
+    let min = active.length - 1;
+    let max = -1;
+
+    // Skip non-active from end
+    while (i >= 0 && !active[i]) i--;
+    // Collect last contiguous block
+    while (i >= 0 && active[i]) {
+      min = Math.min(min, i);
+      max = Math.max(max, i);
+      i--;
+    }
+
+    if (min <= max) {
+      for (let j = min; j <= max; j++) {
+        newActiveIndices.push(j);
+      }
+    }
+
+    setActiveIndices(newActiveIndices);
+  }, [headers]);
+
   useEffect(() => {
     if (headers.length === 0) return;
 
-    const observerOption = {
-      root: null,
-      threshold: [0, 1],
-      rootMargin: "-10% 0px -60% 0px", // Focus on top-middle portion of screen
-    };
-
-    // Tracks which indices are currently in view
-    const intersectingStates = new Array(headers.length).fill(false);
-
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        const id = entry.target.getAttribute("id");
-        const idx = headers.findIndex((h) => h.id === id);
-        if (idx !== -1) {
-          intersectingStates[idx] = entry.isIntersecting;
-        }
-      });
-
-      // Find range of active headings
-      const newActiveIndices: Array<number> = [];
-      let first = -1;
-      let last = -1;
-
-      for (let i = 0; i < intersectingStates.length; i++) {
-        if (intersectingStates[i]) {
-          if (first === -1) first = i;
-          last = i;
-        }
-      }
-
-      // Fallback logic
-      if (first === -1) {
-        // If nothing is currently "intersecting", find the last heading currently above the focus area
-        for (let i = headers.length - 1; i >= 0; i--) {
-          const el = document.getElementById(headers[i].id);
-          if (el && el.getBoundingClientRect().top < 200) {
-            newActiveIndices.push(i);
-            break;
-          }
-        }
-      } else {
-        // Highlight everything from first visible to last visible
-        for (let i = first; i <= last; i++) {
-          newActiveIndices.push(i);
-        }
-      }
-
-      setActiveIndices(newActiveIndices);
-    }, observerOption);
-
-    headers.forEach((header) => {
-      const el = document.getElementById(header.id);
-      if (el) observer.observe(el);
+    window.addEventListener("scroll", computeActiveHeadings, {
+      passive: true,
     });
+    computeActiveHeadings(); // Initial check
 
-    return () => observer.disconnect();
-  }, [headers]);
+    return () => window.removeEventListener("scroll", computeActiveHeadings);
+  }, [headers, computeActiveHeadings]);
 
   // Update indicator style based on the range of active indices
   useEffect(() => {
@@ -163,13 +183,31 @@ export default function TableOfContents({
           opacity: 1,
         });
 
-        // Auto-scroll TOC inside its own small container if active items go out of view
+        // Auto-scroll TOC (matching original scrollToActiveHeading logic)
         const tocHeight = tocRootRef.current.clientHeight;
-        if (lastRect.bottom - rootRect.top > tocHeight * 0.9) {
-          tocRootRef.current.scrollTop +=
-            lastRect.bottom - rootRect.top - tocHeight * 0.8;
-        } else if (firstRect.top - rootRect.top < 32) {
-          tocRootRef.current.scrollTop -= 32 - (firstRect.top - rootRect.top);
+        const topmost = firstLink;
+        const bottommost = lastLink;
+
+        if (
+          bottommost.getBoundingClientRect().bottom -
+            topmost.getBoundingClientRect().top <
+          0.9 * tocHeight
+        ) {
+          // Both fit in view, scroll to topmost
+          const scrollTarget = topmost.offsetTop - 32;
+          tocRootRef.current.scrollTo({
+            top: scrollTarget,
+            left: 0,
+            behavior: "smooth",
+          });
+        } else {
+          // Too tall, scroll to bottommost
+          const scrollTarget = bottommost.offsetTop - tocHeight * 0.8;
+          tocRootRef.current.scrollTo({
+            top: scrollTarget,
+            left: 0,
+            behavior: "smooth",
+          });
         }
       }
     } else {
@@ -185,7 +223,7 @@ export default function TableOfContents({
     <nav
       ref={navRef}
       className={cn(
-        "sticky top-20 self-start block w-full transition-all duration-500",
+        "sticky top-14 self-start block w-full transition-all duration-500",
         isVisible && isReady
           ? "opacity-100 translate-y-0"
           : "opacity-0 translate-y-4 pointer-events-none",
@@ -193,19 +231,22 @@ export default function TableOfContents({
     >
       <div
         ref={tocRootRef}
-        className="relative toc-root overflow-y-auto overflow-x-hidden custom-scrollbar max-h-[calc(100vh-20rem)] hide-scrollbar"
-        style={{ scrollBehavior: "smooth" }}
+        className="relative toc-root overflow-y-scroll overflow-x-hidden custom-scrollbar h-[calc(100vh-20rem)] hide-scrollbar"
+        style={{
+          scrollBehavior: "smooth",
+          maskImage:
+            "linear-gradient(to bottom, transparent 0%, black 2rem, black calc(100% - 2rem), transparent 100%)",
+        }}
       >
+        <div className="h-8 w-full" />
         <div className="group relative flex flex-col w-full">
           {headers
-            .map((heading, originalIdx) => ({ heading, originalIdx }))
-            .filter(({ heading }) => heading.level < minDepth + maxLevel)
-            .map(({ heading, originalIdx }) => {
+            .filter((heading) => heading.level < minDepth + maxLevel)
+            .map((heading) => {
               const text = removeTailingHash(heading.text);
               const isH1 = heading.level === minDepth;
               const isH2 = heading.level === minDepth + 1;
               const isH3 = heading.level === minDepth + 2;
-              const isActive = activeIndices.includes(originalIdx);
 
               return (
                 <a
@@ -228,7 +269,7 @@ export default function TableOfContents({
                   }}
                   className={cn(
                     "px-2 flex gap-2 relative transition w-full min-h-9 rounded-xl py-2 z-10",
-                    "hover:bg-(--fuwari-btn-plain-bg-hover) active:bg-(--fuwari-btn-plain-bg-active)",
+                    "hover:bg-(--fuwari-toc-btn-hover) active:bg-(--fuwari-toc-btn-active)",
                   )}
                 >
                   <div
@@ -252,10 +293,9 @@ export default function TableOfContents({
                   </div>
 
                   <div
-                    className={cn("transition text-sm select-none", {
-                      "fuwari-text-50": (isH1 || isH2) && !isActive,
-                      "fuwari-text-30": isH3 && !isActive,
-                      "fuwari-text-75": isActive,
+                    className={cn("transition text-sm", {
+                      "fuwari-text-50": isH1 || isH2,
+                      "fuwari-text-30": isH3,
                     })}
                   >
                     {text}
@@ -268,8 +308,8 @@ export default function TableOfContents({
           {headers.length > 0 && (
             <div
               className={cn(
-                "absolute left-0 right-0 rounded-xl transition-all duration-300 ease-out z-0 border-2 border-dashed pointer-events-none",
-                "bg-(--fuwari-btn-plain-bg-hover) border-(--fuwari-btn-plain-bg-hover) group-hover:bg-transparent group-hover:border-(--fuwari-primary)/50",
+                "absolute left-0 right-0 rounded-xl transition-all duration-300 ease-out -z-10 border-2 border-dashed pointer-events-none",
+                "bg-(--fuwari-toc-btn-hover) border-(--fuwari-toc-btn-hover) group-hover:bg-transparent group-hover:border-(--fuwari-toc-btn-active)",
               )}
               style={{
                 top: `${indicatorStyle.top}px`,
@@ -279,6 +319,7 @@ export default function TableOfContents({
             />
           )}
         </div>
+        <div className="h-8 w-full" />
       </div>
     </nav>
   );
