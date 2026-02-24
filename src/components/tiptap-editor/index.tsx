@@ -1,15 +1,21 @@
 import { EditorContent, useEditor } from "@tiptap/react";
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import InsertModal from "./ui/insert-modal";
 import EditorToolbar from "./ui/editor-toolbar";
 import { TableBubbleMenu } from "./ui/table-bubble-menu";
+import { FormulaModal } from "./ui/formula-modal";
 import type {
   Extensions,
   JSONContent,
   Editor as TiptapEditor,
 } from "@tiptap/react";
 import type { ModalType } from "./ui/insert-modal";
+import type { FormulaMode } from "./ui/formula-modal";
 import { normalizeLinkHref } from "@/lib/links/normalize-link-href";
+import {
+  setFormulaModalOpener,
+  type FormulaModalPayload,
+} from "./formula-modal-store";
 
 interface EditorProps {
   content?: JSONContent | string;
@@ -26,6 +32,12 @@ export const Editor = memo(function Editor({
 }: EditorProps) {
   const [modalOpen, setModalOpen] = useState<ModalType>(null);
   const [modalInitialUrl, setModalInitialUrl] = useState("");
+  const [formulaModalOpen, setFormulaModalOpen] = useState(false);
+  const [formulaPayload, setFormulaPayload] = useState<{
+    mode: FormulaMode;
+    initialLatex: string;
+    editContext: { pos: number; type: FormulaMode } | null;
+  }>({ mode: "inline", initialLatex: "", editContext: null });
 
   const editor = useEditor({
     extensions,
@@ -55,6 +67,61 @@ export const Editor = memo(function Editor({
     setModalInitialUrl("");
     setModalOpen("IMAGE");
   }, []);
+
+  const openFormulaModal = useCallback(
+    (mode: FormulaMode) => {
+      setFormulaPayload({
+        mode,
+        initialLatex: mode === "inline" ? "x^2+y^2=z^2" : "E = mc^2",
+        editContext: null,
+      });
+      setFormulaModalOpen(true);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const opener = (payload: FormulaModalPayload) => {
+      setFormulaPayload({
+        mode: payload.type,
+        initialLatex: payload.latex,
+        editContext: { pos: payload.pos, type: payload.type },
+      });
+      setFormulaModalOpen(true);
+    };
+    setFormulaModalOpener(opener);
+    return () => setFormulaModalOpener(null);
+  }, []);
+
+  const handleFormulaApply = useCallback(
+    (
+      latex: string,
+      mode: FormulaMode,
+      editContext: { pos: number; type: FormulaMode } | null,
+    ) => {
+      if (!editor) return;
+      if (editContext) {
+        editor
+          .chain()
+          .setNodeSelection(editContext.pos)
+          [editContext.type === "inline" ? "updateInlineMath" : "updateBlockMath"]({
+            latex,
+          })
+          .focus()
+          .run();
+      } else {
+        editor
+          .chain()
+          .focus()
+          [mode === "inline" ? "insertInlineMath" : "insertBlockMath"]({
+            latex,
+          })
+          .run();
+      }
+      setFormulaModalOpen(false);
+    },
+    [editor],
+  );
 
   const handleModalSubmit = (
     url: string,
@@ -86,6 +153,8 @@ export const Editor = memo(function Editor({
         editor={editor}
         onLinkClick={openLinkModal}
         onImageClick={openImageModal}
+        onFormulaInlineClick={() => openFormulaModal("inline")}
+        onFormulaBlockClick={() => openFormulaModal("block")}
       />
 
       <TableBubbleMenu editor={editor} />
@@ -99,6 +168,15 @@ export const Editor = memo(function Editor({
         initialUrl={modalInitialUrl}
         onClose={() => setModalOpen(null)}
         onSubmit={handleModalSubmit}
+      />
+
+      <FormulaModal
+        isOpen={formulaModalOpen}
+        mode={formulaPayload.mode}
+        initialLatex={formulaPayload.initialLatex}
+        editContext={formulaPayload.editContext}
+        onClose={() => setFormulaModalOpen(false)}
+        onApply={handleFormulaApply}
       />
     </div>
   );

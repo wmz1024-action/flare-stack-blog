@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 import FileHandler from "@tiptap/extension-file-handler";
+import Mathematics from "@tiptap/extension-mathematics";
 import Placeholder from "@tiptap/extension-placeholder";
 import StarterKit from "@tiptap/starter-kit";
 import TableOfContents from "@tiptap/extension-table-of-contents";
@@ -18,6 +19,7 @@ import {
 import { ImageUpload } from "@/features/posts/editor/extensions/upload-image";
 import { uploadImageFn } from "@/features/media/media.api";
 import { slugify } from "@/features/posts/utils/content";
+import { openFormulaModalForEdit } from "@/components/tiptap-editor/formula-modal-store";
 
 const ALLOWED_IMAGE_MIME_TYPES = [
   "image/png",
@@ -121,6 +123,27 @@ export const extensions = [
   }),
   BlockQuoteExtension,
   CodeBlockExtension,
+  Mathematics.configure({
+    katexOptions: { throwOnError: false },
+    inlineOptions: {
+      onClick: (node, pos) => {
+        openFormulaModalForEdit({
+          latex: node.attrs.latex ?? "",
+          pos,
+          type: "inline",
+        });
+      },
+    },
+    blockOptions: {
+      onClick: (node, pos) => {
+        openFormulaModalForEdit({
+          latex: node.attrs.latex ?? "",
+          pos,
+          type: "block",
+        });
+      },
+    },
+  }),
   ...TableBlockExtension,
   ImageExtension,
   ImageUpload.configure({

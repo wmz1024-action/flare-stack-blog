@@ -12,6 +12,8 @@ import {
   ListOrdered,
   Quote,
   Redo,
+  Sigma,
+  SquareFunction,
   Strikethrough,
   Table as TableIcon,
   Terminal,
@@ -26,6 +28,8 @@ interface EditorToolbarProps {
   editor: Editor | null;
   onLinkClick: () => void;
   onImageClick: () => void;
+  onFormulaInlineClick: () => void;
+  onFormulaBlockClick: () => void;
 }
 
 interface ToolbarButtonProps {
@@ -61,6 +65,8 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
   editor,
   onLinkClick,
   onImageClick,
+  onFormulaInlineClick,
+  onFormulaBlockClick,
 }) => {
   const {
     isBold,
@@ -181,6 +187,18 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
         isActive={isCodeBlock}
         icon={Terminal}
         label="代码块"
+      />
+      <ToolbarButton
+        onClick={onFormulaInlineClick}
+        isActive={editor?.isActive("inlineMath")}
+        icon={Sigma}
+        label="行内公式"
+      />
+      <ToolbarButton
+        onClick={onFormulaBlockClick}
+        isActive={editor?.isActive("blockMath")}
+        icon={SquareFunction}
+        label="块级公式"
       />
 
       <div className="h-4 w-px bg-border/50 mx-2"></div>
