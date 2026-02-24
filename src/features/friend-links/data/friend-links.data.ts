@@ -2,7 +2,6 @@ import { and, count, desc, eq } from "drizzle-orm";
 import type { FriendLinkStatus } from "@/lib/db/schema";
 import { FriendLinksTable, user } from "@/lib/db/schema";
 
-const DEFAULT_PAGE_SIZE = 20;
 
 export async function insertFriendLink(
   db: DB,
@@ -29,11 +28,11 @@ export async function getAllFriendLinks(
     status?: FriendLinkStatus;
   } = {},
 ) {
-  const { offset = 0, limit = DEFAULT_PAGE_SIZE, status } = options;
+  const { offset = 0, limit, status } = options;
   const conditions = [];
   if (status) conditions.push(eq(FriendLinksTable.status, status));
 
-  const items = await db
+  const query = db
     .select({
       id: FriendLinksTable.id,
       siteName: FriendLinksTable.siteName,
@@ -55,11 +54,13 @@ export async function getAllFriendLinks(
     .from(FriendLinksTable)
     .leftJoin(user, eq(FriendLinksTable.userId, user.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(desc(FriendLinksTable.createdAt))
-    .limit(Math.min(limit, 100))
-    .offset(offset);
+    .orderBy(desc(FriendLinksTable.createdAt));
 
-  return items;
+  if (limit !== undefined) {
+    return await query.limit(Math.min(limit, 100)).offset(offset);
+  }
+
+  return await query;
 }
 
 export async function getAllFriendLinksCount(
