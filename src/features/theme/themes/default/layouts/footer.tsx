@@ -16,7 +16,7 @@ export function Footer({ navOptions }: FooterProps) {
             [ {blogConfig.name} ]
           </span>
           <span className="font-mono text-[10px] text-muted-foreground tracking-widest uppercase">
-            © {new Date().getFullYear()} {blogConfig.author}.
+            © {new Date().getFullYear()} {blogConfig.author}.<br></br><a href="https://icp.gov.moe/?keyword=20268888" target="_blank">萌ICP备20268888号</a>
           </span>
         </div>
 
