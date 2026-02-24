@@ -4,6 +4,8 @@ import InsertModal from "./ui/insert-modal";
 import EditorToolbar from "./ui/editor-toolbar";
 import { TableBubbleMenu } from "./ui/table-bubble-menu";
 import { FormulaModal } from "./ui/formula-modal";
+import { setFormulaModalOpener } from "./formula-modal-store";
+import type { FormulaModalPayload } from "./formula-modal-store";
 import type {
   Extensions,
   JSONContent,
@@ -12,10 +14,6 @@ import type {
 import type { ModalType } from "./ui/insert-modal";
 import type { FormulaMode } from "./ui/formula-modal";
 import { normalizeLinkHref } from "@/lib/links/normalize-link-href";
-import {
-  setFormulaModalOpener,
-  type FormulaModalPayload,
-} from "./formula-modal-store";
 
 interface EditorProps {
   content?: JSONContent | string;
@@ -68,17 +66,14 @@ export const Editor = memo(function Editor({
     setModalOpen("IMAGE");
   }, []);
 
-  const openFormulaModal = useCallback(
-    (mode: FormulaMode) => {
-      setFormulaPayload({
-        mode,
-        initialLatex: mode === "inline" ? "x^2+y^2=z^2" : "E = mc^2",
-        editContext: null,
-      });
-      setFormulaModalOpen(true);
-    },
-    [],
-  );
+  const openFormulaModal = useCallback((mode: FormulaMode) => {
+    setFormulaPayload({
+      mode,
+      initialLatex: mode === "inline" ? "x^2+y^2=z^2" : "E = mc^2",
+      editContext: null,
+    });
+    setFormulaModalOpen(true);
+  }, []);
 
   useEffect(() => {
     const opener = (payload: FormulaModalPayload) => {
@@ -101,22 +96,27 @@ export const Editor = memo(function Editor({
     ) => {
       if (!editor) return;
       if (editContext) {
-        editor
-          .chain()
-          .setNodeSelection(editContext.pos)
-          [editContext.type === "inline" ? "updateInlineMath" : "updateBlockMath"]({
-            latex,
-          })
-          .focus()
-          .run();
+        if (editContext.type === "inline") {
+          editor
+            .chain()
+            .setNodeSelection(editContext.pos)
+            .updateInlineMath({ latex })
+            .focus()
+            .run();
+        } else {
+          editor
+            .chain()
+            .setNodeSelection(editContext.pos)
+            .updateBlockMath({ latex })
+            .focus()
+            .run();
+        }
       } else {
-        editor
-          .chain()
-          .focus()
-          [mode === "inline" ? "insertInlineMath" : "insertBlockMath"]({
-            latex,
-          })
-          .run();
+        if (mode === "inline") {
+          editor.chain().focus().insertInlineMath({ latex }).run();
+        } else {
+          editor.chain().focus().insertBlockMath({ latex }).run();
+        }
       }
       setFormulaModalOpen(false);
     },

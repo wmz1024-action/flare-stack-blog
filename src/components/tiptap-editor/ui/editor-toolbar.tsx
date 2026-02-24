@@ -77,6 +77,8 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
     isStrike,
     isCode,
     isCodeBlock,
+    isInlineMath,
+    isBlockMath,
     isBulletList,
     isOrderedList,
     isBlockquote,
@@ -97,6 +99,8 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
           isOrderedList: false,
           isBlockquote: false,
           isLink: false,
+          isInlineMath: false,
+          isBlockMath: false,
         };
       }
       return {
@@ -108,6 +112,8 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
         isStrike: ctx.editor.isActive("strike"),
         isCode: ctx.editor.isActive("code"),
         isCodeBlock: ctx.editor.isActive("codeBlock"),
+        isInlineMath: ctx.editor.isActive("inlineMath"),
+        isBlockMath: ctx.editor.isActive("blockMath"),
         isBulletList: ctx.editor.isActive("bulletList"),
         isOrderedList: ctx.editor.isActive("orderedList"),
         isBlockquote: ctx.editor.isActive("blockquote"),
@@ -123,6 +129,8 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
     isStrike: false,
     isCode: false,
     isCodeBlock: false,
+    isInlineMath: false,
+    isBlockMath: false,
     isBulletList: false,
     isOrderedList: false,
     isBlockquote: false,
@@ -190,13 +198,13 @@ const EditorToolbar: React.FC<EditorToolbarProps> = ({
       />
       <ToolbarButton
         onClick={onFormulaInlineClick}
-        isActive={editor?.isActive("inlineMath")}
+        isActive={isInlineMath}
         icon={Sigma}
         label="行内公式"
       />
       <ToolbarButton
         onClick={onFormulaBlockClick}
-        isActive={editor?.isActive("blockMath")}
+        isActive={isBlockMath}
         icon={SquareFunction}
         label="块级公式"
       />

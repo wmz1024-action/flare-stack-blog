@@ -18,5 +18,11 @@ export function setFormulaModalOpener(fn: FormulaModalOpener | null) {
 }
 
 export function openFormulaModalForEdit(payload: FormulaModalPayload) {
-  opener?.(payload);
+  if (!opener) {
+    console.warn(
+      "[formula-modal-store] openFormulaModalForEdit called but no opener is registered.",
+    );
+    return;
+  }
+  opener(payload);
 }
