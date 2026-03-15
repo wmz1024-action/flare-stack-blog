@@ -21,7 +21,7 @@ export function Footer({ navOptions }: FooterProps) {
             {m.footer_copyright({
               year: new Date().getFullYear().toString(),
               author: siteConfig.author,
-            })}
+            })}<br></br><a href="https://icp.gov.moe/?keyword=20268888" target="_blank">萌ICP备20268888号</a>
           </span>
         </div>
 
