@@ -1,19 +1,21 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import type { PostEditorData } from "@/features/posts/components/post-editor/types";
+import { MEDIA_KEYS } from "@/features/media/queries";
+import { updatePostFn as adminUpdatePostFn } from "@/features/posts/api/posts.admin.api";
 import { PostEditor } from "@/features/posts/components/post-editor";
 import { PostEditorSkeleton } from "@/features/posts/components/post-editor/post-editor-skeleton";
-import { updatePostFn as adminUpdatePostFn } from "@/features/posts/api/posts.admin.api";
-import { setPostTagsFn } from "@/features/tags/api/tags.api";
+import type { PostEditorData } from "@/features/posts/components/post-editor/types";
 import { POSTS_KEYS, postByIdQuery } from "@/features/posts/queries";
+import { setPostTagsFn } from "@/features/tags/api/tags.api";
 import {
   TAGS_KEYS,
   tagsAdminQueryOptions,
   tagsByPostIdQueryOptions,
 } from "@/features/tags/queries";
-import { MEDIA_KEYS } from "@/features/media/queries";
+import { m } from "@/paraglide/messages";
 
 export const Route = createFileRoute("/admin/posts/edit/$id")({
+  ssr: "data-only",
   component: EditPost,
   pendingComponent: PostEditorSkeleton,
   loader: async ({ context, params }) => {
@@ -49,9 +51,11 @@ function EditPost() {
     return (
       <div className="flex items-center justify-center h-[50vh]">
         <div className="text-center space-y-4">
-          <h2 className="text-4xl font-serif font-medium">未找到文章</h2>
+          <h2 className="text-4xl font-serif font-medium">
+            {m.admin_post_edit_not_found_title()}
+          </h2>
           <p className="text-zinc-400 font-light text-sm">
-            ID 为 {id} 的文章记录不存在或已被移除。
+            {m.admin_post_edit_not_found_desc({ id: String(postId) })}
           </p>
         </div>
       </div>
@@ -73,17 +77,19 @@ function EditPost() {
   };
 
   const handleSave = async (data: PostEditorData) => {
+    const publishedAt =
+      data.status === "published" && !post.publishedAt
+        ? new Date()
+        : data.publishedAt;
+
     // Parallelize updates
-    await Promise.all([
+    const [updateResult] = await Promise.all([
       adminUpdatePostFn({
         data: {
           id: post.id,
           data: {
             ...data,
-            publishedAt:
-              data.status === "published" && !post.publishedAt
-                ? new Date()
-                : data.publishedAt,
+            publishedAt,
           },
         },
       }),
@@ -94,6 +100,10 @@ function EditPost() {
         },
       }),
     ]);
+
+    if (updateResult.error) {
+      throw new Error(m.admin_post_edit_error_not_found());
+    }
 
     // Invalidate cache to ensure fresh data on next visit
     queryClient.invalidateQueries({ queryKey: POSTS_KEYS.detail(postId) });

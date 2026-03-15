@@ -1,16 +1,28 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import theme from "@theme";
+import { siteDomainQuery } from "@/features/config/queries";
 import { featuredPostsQuery } from "@/features/posts/queries";
+import { buildCanonicalUrl, canonicalLink } from "@/lib/seo";
 
 const { featuredPostsLimit } = theme.config.home;
 
 export const Route = createFileRoute("/_public/")({
   loader: async ({ context }) => {
-    await context.queryClient.ensureQueryData(
-      featuredPostsQuery(featuredPostsLimit),
-    );
+    const [, domain] = await Promise.all([
+      context.queryClient.ensureQueryData(
+        featuredPostsQuery(featuredPostsLimit),
+      ),
+      context.queryClient.ensureQueryData(siteDomainQuery),
+    ]);
+
+    return {
+      canonicalHref: buildCanonicalUrl(domain, "/"),
+    };
   },
+  head: ({ loaderData }) => ({
+    links: [canonicalLink(loaderData?.canonicalHref ?? "/")],
+  }),
   pendingComponent: HomePageSkeleton,
   component: HomeRoute,
 });

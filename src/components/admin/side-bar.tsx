@@ -13,13 +13,13 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import type { FileRoutesByTo } from "@/routeTree.gen";
 import { ThemeToggle } from "@/components/common/theme-toggle";
 import ConfirmationModal from "@/components/ui/confirmation-modal";
-import { authClient } from "@/lib/auth/auth.client";
 import { AUTH_KEYS } from "@/features/auth/queries";
+import { authClient } from "@/lib/auth/auth.client";
 import { cn } from "@/lib/utils";
-import { blogConfig } from "@/blog.config";
+import { m } from "@/paraglide/messages";
+import type { FileRoutesByTo } from "@/routeTree.gen";
 
 interface NavItem {
   path: keyof FileRoutesByTo;
@@ -54,15 +54,15 @@ export function SideBar({
     setShowLogoutConfirm(false);
 
     if (error) {
-      toast.error("注销失败", {
-        description: "请重试。",
+      toast.error(m.admin_sidebar_logout_failed(), {
+        description: m.admin_sidebar_logout_failed_desc(),
       });
       return;
     }
 
     queryClient.removeQueries({ queryKey: AUTH_KEYS.session });
 
-    toast.success("已退出登录");
+    toast.success(m.admin_sidebar_logout_success());
     navigate({ to: "/login" });
   };
 
@@ -70,37 +70,37 @@ export function SideBar({
     {
       path: "/admin",
       icon: LayoutDashboard,
-      label: "概览",
+      label: m.admin_sidebar_dashboard(),
       exact: true,
     },
     {
       path: "/admin/posts",
       icon: FileText,
-      label: "文章管理",
+      label: m.admin_sidebar_posts(),
       exact: false,
     },
     {
       path: "/admin/tags",
       icon: Tag,
-      label: "标签管理",
+      label: m.admin_sidebar_tags(),
       exact: false,
     },
     {
       path: "/admin/media",
       icon: ImageIcon,
-      label: "媒体库",
+      label: m.admin_sidebar_media(),
       exact: false,
     },
     {
       path: "/admin/comments",
       icon: MessageSquare,
-      label: "评论管理",
+      label: m.admin_sidebar_comments(),
       exact: false,
     },
     {
       path: "/admin/friend-links",
       icon: Link2,
-      label: "友链管理",
+      label: m.admin_sidebar_friend_links(),
       exact: false,
     },
   ] satisfies Array<NavItem>;
@@ -109,7 +109,7 @@ export function SideBar({
     <>
       {isMobileSidebarOpen && (
         <div
-          className="fixed inset-0 bg-background/80 z-60 md:hidden backdrop-blur-sm animate-in fade-in duration-500"
+          className="fixed inset-0 bg-background/80 z-60 lg:hidden backdrop-blur-sm animate-in fade-in duration-500"
           onClick={closeMobileSidebar}
         />
       )}
@@ -117,22 +117,23 @@ export function SideBar({
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-70 w-72 md:w-64 border-r border-border/30 flex flex-col bg-background transform transition-transform duration-300 ease-in-out md:sticky md:top-0 md:h-screen md:translate-x-0",
+          "fixed inset-y-0 left-0 z-70 w-72 lg:w-64 border-r border-border/30 flex flex-col bg-background transform transition-transform duration-300 ease-in-out lg:sticky lg:top-0 lg:h-screen lg:translate-x-0",
           isMobileSidebarOpen
             ? "translate-x-0 shadow-2xl"
-            : "-translate-x-full md:translate-x-0",
+            : "-translate-x-full lg:translate-x-0",
         )}
       >
         {/* Logo Area */}
         <div className="h-20 flex items-center justify-between px-6 shrink-0 border-b border-border/30">
           <Link to="/admin" className="flex items-center gap-3 group">
             <span className="font-serif font-black text-xl tracking-tighter group-hover:opacity-80 transition-opacity">
-              [ {blogConfig.name} ]
+              [ Admin ]
             </span>
           </Link>
           <button
             onClick={closeMobileSidebar}
-            className="md:hidden p-2 text-muted-foreground hover:text-foreground"
+            className="lg:hidden p-2 text-muted-foreground hover:text-foreground"
+            aria-label={m.admin_sidebar_close_navigation()}
           >
             <X size={20} strokeWidth={1.5} />
           </button>
@@ -174,7 +175,7 @@ export function SideBar({
           {/* Theme Toggle Area */}
           <div className="flex items-center justify-between">
             <span className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground font-mono">
-              THEME_MODE
+              {m.admin_sidebar_theme_mode()}
             </span>
             <ThemeToggle className="size-8" />
           </div>
@@ -195,10 +196,12 @@ export function SideBar({
               </div>
               <div className="flex flex-col">
                 <span className="text-[10px] font-mono uppercase tracking-wider truncate max-w-25">
-                  {user?.name || "管理员"}
+                  {user?.name || m.admin_sidebar_admin_fallback()}
                 </span>
                 <span className="text-[8px] text-muted-foreground font-mono">
-                  {user?.role === "admin" ? "ADMINISTRATOR" : "USER"}
+                  {user?.role === "admin"
+                    ? m.admin_sidebar_role_admin()
+                    : m.admin_sidebar_role_user()}
                 </span>
               </div>
             </div>
@@ -206,7 +209,7 @@ export function SideBar({
             <button
               onClick={handleSignOutClick}
               className="w-8 h-8 flex items-center justify-center text-muted-foreground hover:text-destructive transition-colors border border-transparent hover:border-destructive/30"
-              title="退出登录"
+              title={m.admin_sidebar_logout()}
             >
               <LogOut size={14} strokeWidth={1.5} />
             </button>
@@ -219,9 +222,9 @@ export function SideBar({
         isOpen={showLogoutConfirm}
         onClose={() => setShowLogoutConfirm(false)}
         onConfirm={handleConfirmSignOut}
-        title="确认退出"
-        message="您确定要结束当前管理会话并注销吗？"
-        confirmLabel="确认退出"
+        title={m.admin_sidebar_logout_title()}
+        message={m.admin_sidebar_logout_message()}
+        confirmLabel={m.admin_sidebar_logout_confirm()}
         isLoading={isLoggingOut}
       />
     </>

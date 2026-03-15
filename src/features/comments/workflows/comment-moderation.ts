@@ -1,15 +1,18 @@
-import { WorkflowEntrypoint } from "cloudflare:workers";
-import { renderToStaticMarkup } from "react-dom/server";
 import type { WorkflowEvent, WorkflowStep } from "cloudflare:workers";
-import * as CommentService from "@/features/comments/comments.service";
+import { WorkflowEntrypoint } from "cloudflare:workers";
 import * as AiService from "@/features/ai/ai.service";
+import * as CommentService from "@/features/comments/comments.service";
 import * as CommentRepo from "@/features/comments/data/comments.data";
-import * as PostService from "@/features/posts/posts.service";
 import { sendReplyNotification } from "@/features/comments/workflows/helpers";
-import { AdminNotificationEmail } from "@/features/email/templates/AdminNotificationEmail";
+import { publishNotificationEvent } from "@/features/notification/service/notification.publisher";
+import * as PostService from "@/features/posts/posts.service";
+import {
+  buildContentPreview,
+  convertToPlainText,
+} from "@/features/posts/utils/content";
 import { getDb } from "@/lib/db";
 import { isNotInProduction, serverEnv } from "@/lib/env/server.env";
-import { convertToPlainText } from "@/features/posts/utils/content";
+import { m } from "@/paraglide/messages";
 
 interface Params {
   commentId: number;
@@ -18,6 +21,7 @@ interface Params {
 export class CommentModerationWorkflow extends WorkflowEntrypoint<Env, Params> {
   async run(event: WorkflowEvent<Params>, step: WorkflowStep) {
     const { commentId } = event.payload;
+    const locale = serverEnv(this.env).LOCALE;
 
     // Step 1: Fetch the comment
     const comment = await step.do("fetch comment", async () => {
@@ -68,8 +72,36 @@ export class CommentModerationWorkflow extends WorkflowEntrypoint<Env, Params> {
       return;
     }
 
+    const threadContext = await step.do("fetch thread context", async () => {
+      const db = getDb(this.env);
+      const [rootComment, replyToComment] = await Promise.all([
+        comment.rootId
+          ? CommentService.findCommentById(
+              { db, env: this.env },
+              comment.rootId,
+            )
+          : null,
+        comment.replyToCommentId
+          ? CommentService.findCommentById(
+              { db, env: this.env },
+              comment.replyToCommentId,
+            )
+          : null,
+      ]);
+
+      return {
+        rootCommentText: rootComment
+          ? convertToPlainText(rootComment.content).trim()
+          : "",
+        replyToCommentText: replyToComment
+          ? convertToPlainText(replyToComment.content).trim()
+          : "",
+      };
+    });
+
     // Extract plain text from JSONContent
     const plainText = convertToPlainText(comment.content);
+    const postContentPreview = buildContentPreview(post.contentJson);
 
     if (!plainText || plainText.trim().length === 0) {
       // Empty comment, mark as pending for manual review
@@ -79,7 +111,7 @@ export class CommentModerationWorkflow extends WorkflowEntrypoint<Env, Params> {
           { db, env: this.env },
           commentId,
           "pending",
-          "评论内容为空，需人工审核",
+          m.comments_moderation_reason_empty_pending({}, { locale }),
         );
       });
       return;
@@ -99,7 +131,7 @@ export class CommentModerationWorkflow extends WorkflowEntrypoint<Env, Params> {
         if (isNotInProduction(this.env)) {
           return {
             safe: true,
-            reason: "开发环境，自动通过",
+            reason: m.comments_moderation_reason_dev_approved({}, { locale }),
           };
         }
         try {
@@ -110,6 +142,12 @@ export class CommentModerationWorkflow extends WorkflowEntrypoint<Env, Params> {
               post: {
                 title: post.title,
                 summary: post.summary ?? "",
+                contentPreview: postContentPreview,
+              },
+              thread: {
+                isReply: Boolean(comment.replyToCommentId),
+                rootComment: threadContext.rootCommentText,
+                replyToComment: threadContext.replyToCommentText,
               },
             },
           );
@@ -124,7 +162,7 @@ export class CommentModerationWorkflow extends WorkflowEntrypoint<Env, Params> {
           );
           return {
             safe: false,
-            reason: "AI 审核服务暂时不可用，等待人工审核",
+            reason: m.comments_moderation_reason_ai_unavailable({}, { locale }),
           };
         }
       },
@@ -161,24 +199,19 @@ export class CommentModerationWorkflow extends WorkflowEntrypoint<Env, Params> {
         );
         const { ADMIN_EMAIL, DOMAIN } = serverEnv(this.env);
         const commentPreview = plainText.slice(0, 100);
-
-        const emailHtml = renderToStaticMarkup(
-          AdminNotificationEmail({
-            postTitle: post.title,
-            commenterName: commenter?.name ?? "匿名用户",
-            commentPreview: `${commentPreview}${commentPreview.length >= 100 ? "..." : ""}`,
-            commentUrl: `https://${DOMAIN}/admin/comments`,
-          }),
-        );
-
-        await this.env.QUEUE.send({
-          type: "EMAIL",
-          data: {
-            to: ADMIN_EMAIL,
-            subject: `[待审核] ${post.title}`,
-            html: emailHtml,
+        await publishNotificationEvent(
+          { db, env: this.env, executionCtx: this.ctx },
+          {
+            type: "comment.admin_pending_review",
+            data: {
+              to: ADMIN_EMAIL,
+              postTitle: post.title,
+              commenterName: commenter?.name ?? "匿名用户",
+              commentPreview: `${commentPreview}${commentPreview.length >= 100 ? "..." : ""}`,
+              reviewUrl: `https://${DOMAIN}/admin/comments`,
+            },
           },
-        });
+        );
       });
     }
 
@@ -186,16 +219,19 @@ export class CommentModerationWorkflow extends WorkflowEntrypoint<Env, Params> {
     if (moderationResult.safe && comment.replyToCommentId) {
       await step.do("send reply notification", async () => {
         const db = getDb(this.env);
-        await sendReplyNotification(db, this.env, {
-          comment: {
-            id: comment.id,
-            rootId: comment.rootId,
-            replyToCommentId: comment.replyToCommentId,
-            userId: comment.userId,
-            content: comment.content,
+        await sendReplyNotification(
+          { db, env: this.env, executionCtx: this.ctx },
+          {
+            comment: {
+              id: comment.id,
+              rootId: comment.rootId,
+              replyToCommentId: comment.replyToCommentId,
+              userId: comment.userId,
+              content: comment.content,
+            },
+            post: { slug: post.slug, title: post.title },
           },
-          post: { slug: post.slug, title: post.title },
-        });
+        );
       });
     }
   }

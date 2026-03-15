@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import theme from "@theme";
-import { userHasPasswordFn } from "@/features/auth/auth.api";
+import { userHasPasswordFn } from "@/features/auth/api/auth.api";
 import {
   useLogout,
   useNotificationToggle,
@@ -10,12 +10,14 @@ import {
 } from "@/features/auth/hooks";
 import { AUTH_KEYS } from "@/features/auth/queries";
 import { authClient } from "@/lib/auth/auth.client";
+import { m } from "@/paraglide/messages";
 
 export const Route = createFileRoute("/_user/profile")({
+  ssr: false,
   component: ProfilePage,
   loader: async () => {
     return {
-      title: "个人资料",
+      title: m.profile_title(),
     };
   },
   head: ({ loaderData }) => ({

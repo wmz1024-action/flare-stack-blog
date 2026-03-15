@@ -1,12 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
-import { SubmitFriendLinkInputSchema } from "../friend-links.schema";
-import * as FriendLinkService from "../friend-links.service";
 import {
   authMiddleware,
   createRateLimitMiddleware,
   dbMiddleware,
   turnstileMiddleware,
 } from "@/lib/middlewares";
+import { SubmitFriendLinkInputSchema } from "../friend-links.schema";
+import * as FriendLinkService from "../friend-links.service";
 
 export const submitFriendLinkFn = createServerFn({
   method: "POST",
@@ -21,9 +21,10 @@ export const submitFriendLinkFn = createServerFn({
     authMiddleware,
   ])
   .inputValidator(SubmitFriendLinkInputSchema)
-  .handler(async ({ data, context }) => {
-    return await FriendLinkService.submitFriendLink(context, data);
-  });
+  .handler(
+    async ({ data, context }) =>
+      await FriendLinkService.submitFriendLink(context, data),
+  );
 
 export const getApprovedFriendLinksFn = createServerFn()
   .middleware([dbMiddleware])
@@ -33,6 +34,6 @@ export const getApprovedFriendLinksFn = createServerFn()
 
 export const getMyFriendLinksFn = createServerFn()
   .middleware([authMiddleware])
-  .handler(async ({ context }) => {
-    return await FriendLinkService.getMyFriendLinks(context);
-  });
+  .handler(
+    async ({ context }) => await FriendLinkService.getMyFriendLinks(context),
+  );

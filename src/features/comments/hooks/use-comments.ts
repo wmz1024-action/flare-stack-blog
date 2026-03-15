@@ -1,38 +1,42 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { createCommentFn, deleteCommentFn } from "../api/comments.public.api";
+import { COMMENTS_KEYS } from "@/features/comments/queries";
+import { m } from "@/paraglide/messages";
 import {
   adminDeleteCommentFn,
   moderateCommentFn,
 } from "../api/comments.admin.api";
-import { COMMENTS_KEYS } from "@/features/comments/queries";
+import { createCommentFn, deleteCommentFn } from "../api/comments.public.api";
 
 export function useComments(postId?: number) {
   const queryClient = useQueryClient();
 
   const createCommentMutation = useMutation({
     mutationFn: async (input: Parameters<typeof createCommentFn>[0]) => {
-      const result = await createCommentFn(input);
+      return await createCommentFn(input);
+    },
+    onSuccess: (result) => {
       if (result.error) {
         const reason = result.error.reason;
         switch (reason) {
           case "ROOT_COMMENT_NOT_FOUND":
           case "REPLY_TO_COMMENT_NOT_FOUND":
-            throw new Error("该评论已被删除，请刷新页面");
+            toast.error(m.comments_toast_deleted_refresh());
+            return;
           case "INVALID_ROOT_ID":
           case "ROOT_COMMENT_POST_MISMATCH":
           case "REPLY_TO_COMMENT_ROOT_MISMATCH":
           case "ROOT_COMMENT_CANNOT_HAVE_REPLY_TO":
-            throw new Error("评论结构异常，请刷新页面重试");
+            toast.error(m.comments_toast_structure_error());
+            return;
           default: {
             reason satisfies never;
-            throw new Error("未知错误");
+            toast.error(m.comments_toast_unknown_error());
+            return;
           }
         }
       }
-      return result.data;
-    },
-    onSuccess: () => {
+
       // Invalidate both root comments and all replies queries for this post
       if (postId) {
         queryClient.invalidateQueries({
@@ -55,14 +59,30 @@ export function useComments(postId?: number) {
         exact: false,
       });
     },
-    onError: (error) => {
-      toast.error(error.message);
-    },
   });
 
   const deleteCommentMutation = useMutation({
-    mutationFn: deleteCommentFn,
-    onSuccess: () => {
+    mutationFn: async (input: Parameters<typeof deleteCommentFn>[0]) => {
+      return await deleteCommentFn(input);
+    },
+    onSuccess: (result) => {
+      if (result.error) {
+        const reason = result.error.reason;
+        switch (reason) {
+          case "COMMENT_NOT_FOUND":
+            toast.error(m.comments_toast_delete_not_found());
+            return;
+          case "PERMISSION_DENIED":
+            toast.error(m.comments_toast_delete_denied());
+            return;
+          default: {
+            reason satisfies never;
+            toast.error(m.comments_toast_delete_error());
+            return;
+          }
+        }
+      }
+
       // Invalidate both root comments and all replies queries for this post
       if (postId) {
         queryClient.invalidateQueries({
@@ -84,10 +104,7 @@ export function useComments(postId?: number) {
         queryKey: COMMENTS_KEYS.mine,
         exact: false,
       });
-      toast.success("评论已删除");
-    },
-    onError: (error) => {
-      toast.error("删除失败: " + error.message);
+      toast.success(m.comments_toast_delete_success());
     },
   });
 
@@ -103,33 +120,42 @@ export function useAdminComments() {
   const queryClient = useQueryClient();
 
   const moderateMutation = useMutation({
-    mutationFn: moderateCommentFn,
-    onSuccess: () => {
+    mutationFn: async (input: Parameters<typeof moderateCommentFn>[0]) => {
+      return await moderateCommentFn(input);
+    },
+    onSuccess: (result) => {
+      if (result.error) {
+        toast.error(m.comments_toast_moderate_not_found());
+        return;
+      }
+
       // Invalidate all comment related queries to be safe since moderation
       // affects visibility in both admin and public views
       queryClient.invalidateQueries({ queryKey: COMMENTS_KEYS.all });
-      toast.success("审核操作成功");
-    },
-    onError: (error) => {
-      toast.error("操作失败: " + error.message);
+      toast.success(m.comments_toast_moderate_success());
     },
   });
 
   const adminDeleteMutation = useMutation({
-    mutationFn: adminDeleteCommentFn,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: COMMENTS_KEYS.all });
-      toast.success("评论已永久删除");
+    mutationFn: async (input: Parameters<typeof adminDeleteCommentFn>[0]) => {
+      return await adminDeleteCommentFn(input);
     },
-    onError: (error) => {
-      toast.error("删除失败: " + error.message);
+    onSuccess: (result) => {
+      if (result.error) {
+        toast.error(m.comments_toast_destroy_not_found());
+        return;
+      }
+
+      queryClient.invalidateQueries({ queryKey: COMMENTS_KEYS.all });
+      toast.success(m.comments_toast_destroy_success());
     },
   });
 
   return {
-    moderate: moderateMutation.mutateAsync,
+    moderate: moderateMutation.mutate,
+    moderateAsync: moderateMutation.mutateAsync,
     isModerating: moderateMutation.isPending,
-    adminDelete: adminDeleteMutation.mutateAsync,
+    adminDelete: adminDeleteMutation.mutate,
     isAdminDeleting: adminDeleteMutation.isPending,
   };
 }

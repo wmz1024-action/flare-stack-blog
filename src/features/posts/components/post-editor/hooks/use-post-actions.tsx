@@ -2,18 +2,19 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Radio } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import type { PostEditorData } from "@/features/posts/components/post-editor/types";
-import type { Tag } from "@/features/tags/tags.schema";
 import {
   generateSlugFn,
   previewSummaryFn,
   startPostProcessWorkflowFn,
 } from "@/features/posts/api/posts.admin.api";
-import { useDebounce } from "@/hooks/use-debounce";
-import { toLocalDateString } from "@/lib/utils";
+import type { PostEditorData } from "@/features/posts/components/post-editor/types";
 import { convertToPlainText, slugify } from "@/features/posts/utils/content";
 import { createTagFn, generateTagsFn } from "@/features/tags/api/tags.api";
 import { TAGS_KEYS } from "@/features/tags/queries";
+import type { Tag } from "@/features/tags/tags.schema";
+import { useDebounce } from "@/hooks/use-debounce";
+import { toLocalDateString } from "@/lib/utils";
+import { m } from "@/paraglide/messages";
 
 interface UsePostActionsOptions {
   postId: number;
@@ -112,25 +113,10 @@ export function usePostActions({
 
   const processDataMutation = useMutation({
     mutationFn: startPostProcessWorkflowFn,
-  });
-
-  const handleProcessData = () => {
-    if (processState !== "IDLE") return;
-
-    setProcessState("PROCESSING");
-
-    setTimeout(() => {
-      processDataMutation.mutate({
-        data: {
-          id: postId,
-          status: post.status,
-          clientToday: toLocalDateString(new Date()),
-        },
-      });
-
+    onSuccess: () => {
       // Feedback: Notify user task is running
-      toast("发布流启动", {
-        description: "后台正在进行内容处理与部署分析。",
+      toast(m.editor_action_publish_start(), {
+        description: m.editor_action_publish_desc(),
         icon: <Radio className="animate-pulse text-foreground" />,
         className:
           "bg-background/95 backdrop-blur-2xl border border-border rounded-sm",
@@ -147,6 +133,26 @@ export function usePostActions({
       setTimeout(() => {
         setProcessState("IDLE");
       }, 3000);
+    },
+    onSettled: (_data, error) => {
+      if (!error) return;
+      setProcessState("IDLE");
+    },
+  });
+
+  const handleProcessData = () => {
+    if (processState !== "IDLE") return;
+
+    setProcessState("PROCESSING");
+
+    setTimeout(() => {
+      processDataMutation.mutate({
+        data: {
+          id: postId,
+          status: post.status,
+          clientToday: toLocalDateString(new Date()),
+        },
+      });
     }, 800);
   };
 
@@ -162,14 +168,15 @@ export function usePostActions({
     onSuccess: (result) => {
       setPost((prev) => ({ ...prev, slug: result.slug }));
       if (slugGenerationMode.current === "manual") {
-        toast.success("URL slug 已设置", {
-          description: `URL slug 已设置为 "${result.slug}"`,
+        toast.success(m.editor_action_slug_set(), {
+          description: m.editor_action_slug_set_desc({ slug: result.slug }),
         });
       }
     },
-    onError: (error) => {
-      console.error("Slug生成失败:", error);
-      setError("Slug生成失败");
+    onSettled: (_data, error) => {
+      if (!error) return;
+      console.error("Slug generation failed:", error);
+      setError(m.editor_action_slug_error());
       const fallbackSlug = slugify(post.title) || "untitled-log";
       setPost((prev) => ({ ...prev, slug: fallbackSlug }));
     },
@@ -184,11 +191,6 @@ export function usePostActions({
       }),
     onSuccess: (result) => {
       setPost((prev) => ({ ...prev, summary: result.summary }));
-    },
-    onError: (error) => {
-      toast.error("摘要生成失败", {
-        description: error.message,
-      });
     },
   });
 
@@ -219,8 +221,8 @@ export function usePostActions({
     const silent = options?.silent ?? false;
     if (!post.contentJson) {
       if (!silent) {
-        toast.error("没有内容", {
-          description: "需要先写一些内容才能计算阅读时间。",
+        toast.error(m.editor_action_no_content(), {
+          description: m.editor_action_no_content_read_time(),
         });
       }
       return;
@@ -239,8 +241,11 @@ export function usePostActions({
       setIsCalculatingReadTime(false);
 
       if (!silent) {
-        toast.success("阅读时间计算完成", {
-          description: `预计阅读时间 ${mins} 分钟 (${words} 字)`,
+        toast.success(m.editor_action_read_time_done(), {
+          description: m.editor_action_read_time_desc({
+            mins: String(mins),
+            words: String(words),
+          }),
         });
       }
     }, 400);
@@ -269,7 +274,7 @@ export function usePostActions({
 
   const handleGenerateSlug = () => {
     if (!post.title.trim()) {
-      setError("标题不能为空");
+      setError(m.editor_action_title_empty());
       return;
     }
     slugGenerationMode.current = "manual";
@@ -282,8 +287,8 @@ export function usePostActions({
 
   const handleGenerateSummary = () => {
     if (!post.contentJson) {
-      toast.error("没有内容", {
-        description: "需要先写一些内容才能生成摘要。",
+      toast.error(m.editor_action_no_content(), {
+        description: m.editor_action_no_content_summary(),
       });
       return;
     }
@@ -327,17 +332,8 @@ export function usePostActions({
         } else {
           const result = await createTagFn({ data: { name } });
           if (result.error) {
-            const reason = result.error.reason;
-            switch (reason) {
-              // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-              case "TAG_NAME_ALREADY_EXISTS":
-                // 重名时跳过，不中断流程
-                continue;
-              default: {
-                reason satisfies never;
-                throw new Error("未知错误");
-              }
-            }
+            // 当前仅会返回 TAG_NAME_ALREADY_EXISTS，直接跳过即可
+            continue;
           }
           newTagIds.push(result.data.id);
           currentTagIds.add(result.data.id);
@@ -354,18 +350,23 @@ export function usePostActions({
           queryKey: TAGS_KEYS.adminList({}),
         });
 
-        toast.success("AI 标签生成完成", {
-          description: `已添加 ${newTagIds.length} 个新标签`,
+        toast.success(m.editor_action_tags_done(), {
+          description: m.editor_action_tags_added({
+            count: String(newTagIds.length),
+          }),
         });
       } else {
-        toast.info("AI 标签生成完成", {
-          description: "没有生成新的标签",
+        toast.info(m.editor_action_tags_done(), {
+          description: m.editor_action_tags_none(),
         });
       }
     } catch (error) {
-      console.error("生成标签失败:", error);
-      toast.error("生成标签失败", {
-        description: error instanceof Error ? error.message : "未知错误",
+      console.error("Failed to generate tags:", error);
+      toast.error(m.editor_action_tags_error(), {
+        description:
+          error instanceof Error
+            ? error.message
+            : m.editor_action_unknown_error(),
       });
     } finally {
       setIsGeneratingTags(false);

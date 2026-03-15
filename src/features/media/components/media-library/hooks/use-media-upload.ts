@@ -1,10 +1,11 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import type { UploadItem } from "../types";
-import { uploadImageFn } from "@/features/media/media.api";
+import { uploadImageFn } from "@/features/media/api/media.api";
 import { MEDIA_KEYS } from "@/features/media/queries";
 import { formatBytes } from "@/lib/utils";
+import { m } from "@/paraglide/messages";
+import type { UploadItem } from "../types";
 
 export function useMediaUpload() {
   const queryClient = useQueryClient();
@@ -28,8 +29,7 @@ export function useMediaUpload() {
     mutationFn: async (file: File) => {
       const formData = new FormData();
       formData.append("image", file);
-      const result = await uploadImageFn({ data: formData });
-      return result;
+      return await uploadImageFn({ data: formData });
     },
   });
 
@@ -50,7 +50,11 @@ export function useMediaUpload() {
         setQueue((prev) =>
           prev.map((q, i) =>
             i === waitingIndex
-              ? { ...q, status: "ERROR", log: "> ERROR: 没有数据包" }
+              ? {
+                  ...q,
+                  status: "ERROR",
+                  log: m.media_upload_log_error_no_data(),
+                }
               : q,
           ),
         );
@@ -66,14 +70,36 @@ export function useMediaUpload() {
                 ...q,
                 status: "UPLOADING",
                 progress: 50,
-                log: "> UPLOAD_STREAM: 数据包发送中...",
+                log: m.media_upload_log_stream_sending(),
               }
             : q,
         ),
       );
 
       try {
-        await uploadMutation.mutateAsync(item.file);
+        const result = await uploadMutation.mutateAsync(item.file);
+        if (result.error) {
+          if (isMountedRef.current) {
+            const message = m.media_upload_error_db();
+
+            setQueue((prev) =>
+              prev.map((q, i) =>
+                i === waitingIndex
+                  ? {
+                      ...q,
+                      status: "ERROR",
+                      progress: 0,
+                      log: m.media_upload_log_error({ message }),
+                    }
+                  : q,
+              ),
+            );
+            toast.error(m.media_upload_fail({ name: item.name }), {
+              description: message,
+            });
+          }
+          return;
+        }
 
         if (isMountedRef.current) {
           setQueue((prev) =>
@@ -83,17 +109,22 @@ export function useMediaUpload() {
                     ...q,
                     status: "COMPLETE",
                     progress: 100,
-                    log: "> 上传完成。资产已索引。",
+                    log: m.media_upload_log_complete(),
                   }
                 : q,
             ),
           );
 
-          toast.success(`上传完成: ${item.name}`);
+          toast.success(m.media_upload_success({ name: item.name }));
           queryClient.invalidateQueries({ queryKey: MEDIA_KEYS.all });
         }
       } catch (error) {
         if (isMountedRef.current) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : m.request_error_unknown_title();
+
           setQueue((prev) =>
             prev.map((q, i) =>
               i === waitingIndex
@@ -101,14 +132,14 @@ export function useMediaUpload() {
                     ...q,
                     status: "ERROR",
                     progress: 0,
-                    log: `> ERROR: ${
-                      error instanceof Error ? error.message : "上传失败"
-                    }`,
+                    log: m.media_upload_log_error({ message }),
                   }
                 : q,
             ),
           );
-          toast.error(`上传失败: ${item.name}`);
+          toast.error(m.media_upload_fail({ name: item.name }), {
+            description: message,
+          });
         }
       } finally {
         // 关键修复：使用 finally 确保锁一定会被释放
@@ -126,7 +157,7 @@ export function useMediaUpload() {
       size: formatBytes(file.size),
       progress: 0,
       status: "WAITING" as const,
-      log: "> 初始化上传握手...",
+      log: m.media_upload_log_init(),
       file,
     }));
     setQueue((prev) => [...prev, ...newItems]);

@@ -1,5 +1,5 @@
 import type { JSONContent } from "@tiptap/react";
-import { extractImageKey } from "@/features/media/media.utils";
+import { extractImageKey } from "@/features/media/utils/media.utils";
 import { highlight } from "@/lib/shiki";
 
 export function slugify(text: string | null | undefined) {
@@ -117,4 +117,13 @@ export function convertToPlainText(doc: JSONContent | null): string {
   // 5. 清理多余空行，整洁输出
   // 将连续的换行符替换为单个空格或单个换行
   return textParts.join("").replace(/\n+/g, "\n").trim();
+}
+
+export function buildContentPreview(
+  doc: JSONContent | null,
+  maxLength = 1500,
+): string {
+  const preview = convertToPlainText(doc).trim();
+  if (!preview) return "";
+  return preview.slice(0, maxLength);
 }

@@ -1,10 +1,10 @@
-import type { DB as DBType } from "@/lib/db";
+import type { ThemeName, ThemeRouterConfig } from "@/features/theme/registry";
 import type {
   Auth as AuthType,
   Session as SessionType,
 } from "@/lib/auth/auth.server";
+import type { DB as DBType } from "@/lib/db";
 import type { QueueMessage } from "@/lib/queue/queue.schema";
-import type { ThemeRouterConfig } from "@/features/theme/registry";
 
 declare global {
   interface PostProcessWorkflowParams {
@@ -27,12 +27,14 @@ declare global {
     taskId: string;
     postIds?: Array<number>;
     status?: "draft" | "published";
+    locale?: "zh" | "en";
   }
 
   interface ImportWorkflowParams {
     taskId: string;
     r2Key: string;
     mode: "native" | "markdown";
+    locale?: "zh" | "en";
   }
 
   interface Env extends Cloudflare.Env {
@@ -66,5 +68,6 @@ declare global {
   };
 
   const __APP_VERSION__: string;
+  const __THEME_NAME__: ThemeName;
   const __THEME_CONFIG__: ThemeRouterConfig;
 }

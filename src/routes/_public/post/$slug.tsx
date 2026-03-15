@@ -1,8 +1,14 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, notFound } from "@tanstack/react-router";
-import { z } from "zod";
 import theme from "@theme";
+import { z } from "zod";
+import { siteConfigQuery, siteDomainQuery } from "@/features/config/queries";
 import { postBySlugQuery, relatedPostsQuery } from "@/features/posts/queries";
+import {
+  buildArticleJsonLd,
+  buildCanonicalUrl,
+  canonicalLink,
+} from "@/lib/seo";
 
 const searchSchema = z.object({
   highlightCommentId: z.coerce.number().optional(),
@@ -16,9 +22,11 @@ export const Route = createFileRoute("/_public/post/$slug")({
   component: RouteComponent,
   loader: async ({ context, params }) => {
     // 1. Critical: Main post data - use serverFn (executes directly on server, no HTTP)
-    const post = await context.queryClient.ensureQueryData(
-      postBySlugQuery(params.slug),
-    );
+    const [post, domain, siteConfig] = await Promise.all([
+      context.queryClient.ensureQueryData(postBySlugQuery(params.slug)),
+      context.queryClient.ensureQueryData(siteDomainQuery),
+      context.queryClient.ensureQueryData(siteConfigQuery),
+    ]);
 
     // 2. Deferred: Related posts (prefetch only, don't await)
     void context.queryClient.prefetchQuery(
@@ -27,22 +35,48 @@ export const Route = createFileRoute("/_public/post/$slug")({
 
     if (!post) throw notFound();
 
-    return post;
+    return {
+      post,
+      authorName: siteConfig.author,
+      canonicalHref: buildCanonicalUrl(
+        domain,
+        `/post/${encodeURIComponent(post.slug)}`,
+      ),
+    };
   },
-  head: ({ loaderData: post }) => ({
-    meta: [
-      {
-        title: post?.title,
-      },
-      {
-        name: "description",
-        content: post?.summary ?? "",
-      },
-      { property: "og:title", content: post?.title ?? "" },
-      { property: "og:description", content: post?.summary ?? "" },
-      { property: "og:type", content: "article" },
-    ],
-  }),
+  head: ({ loaderData }) => {
+    const post = loaderData?.post;
+    const canonicalHref = loaderData?.canonicalHref ?? "";
+
+    return {
+      meta: [
+        {
+          title: post?.title,
+        },
+        {
+          name: "description",
+          content: post?.summary ?? "",
+        },
+        { property: "og:title", content: post?.title ?? "" },
+        { property: "og:description", content: post?.summary ?? "" },
+        { property: "og:type", content: "article" },
+        { property: "og:url", content: canonicalHref },
+      ],
+      links: [canonicalLink(canonicalHref)],
+      scripts: post
+        ? [
+            {
+              type: "application/ld+json",
+              children: buildArticleJsonLd({
+                authorName: loaderData.authorName,
+                canonicalHref,
+                post,
+              }),
+            },
+          ]
+        : [],
+    };
+  },
   pendingComponent: () => <theme.PostPageSkeleton />,
   pendingMs: __THEME_CONFIG__.pendingMs,
 });

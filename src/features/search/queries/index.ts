@@ -1,6 +1,6 @@
 import { queryOptions } from "@tanstack/react-query";
-import { getIndexVersionFn } from "../search.api";
 import { apiClient } from "@/lib/api-client";
+import { getIndexVersionFn } from "../api/search.api";
 
 export const SEARCH_KEYS = {
   all: ["search"] as const,

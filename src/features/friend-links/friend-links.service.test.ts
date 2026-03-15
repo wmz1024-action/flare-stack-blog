@@ -1,4 +1,3 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createAdminTestContext,
   createAuthTestContext,
@@ -7,6 +6,9 @@ import {
   seedUser,
   waitForBackgroundTasks,
 } from "tests/test-utils";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_CONFIG } from "@/features/config/config.schema";
+import * as ConfigRepo from "@/features/config/data/config.data";
 import * as FriendLinkService from "./friend-links.service";
 
 describe("FriendLinkService", () => {
@@ -32,6 +34,8 @@ describe("FriendLinkService", () => {
       executionCtx: createMockExecutionCtx(),
     });
     await seedUser(userContext.db, userSession.user);
+
+    await ConfigRepo.upsertSystemConfig(adminContext.db, DEFAULT_CONFIG);
   });
 
   describe("User Submission", () => {
@@ -64,6 +68,142 @@ describe("FriendLinkService", () => {
           }),
         }),
       );
+    });
+
+    it("should send admin webhook without email when admin email is disabled", async () => {
+      await ConfigRepo.upsertSystemConfig(adminContext.db, {
+        ...DEFAULT_CONFIG,
+        notification: {
+          ...DEFAULT_CONFIG.notification,
+          admin: {
+            channels: {
+              email: false,
+              webhook: true,
+            },
+          },
+          webhooks: [
+            {
+              id: "friend-link-webhook",
+              name: "Friend Link Webhook",
+              url: "https://example.com/webhook",
+              enabled: true,
+              secret: "secret",
+              events: ["friend_link.submitted"],
+            },
+          ],
+        },
+      });
+
+      vi.mocked(userContext.env.QUEUE.send).mockClear();
+
+      await FriendLinkService.submitFriendLink(userContext, {
+        siteName: "Webhook Site",
+        siteUrl: "https://webhook-site.com",
+        contactEmail: "contact@webhook-site.com",
+      });
+
+      expect(userContext.env.QUEUE.send).toHaveBeenCalledTimes(1);
+      expect(userContext.env.QUEUE.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "WEBHOOK",
+          data: expect.objectContaining({
+            endpointId: "friend-link-webhook",
+            event: expect.objectContaining({
+              type: "friend_link.submitted",
+            }),
+          }),
+        }),
+      );
+    });
+
+    it("should only send webhook to endpoints subscribed to friend link submission", async () => {
+      await ConfigRepo.upsertSystemConfig(adminContext.db, {
+        ...DEFAULT_CONFIG,
+        notification: {
+          ...DEFAULT_CONFIG.notification,
+          admin: {
+            channels: {
+              email: false,
+              webhook: true,
+            },
+          },
+          webhooks: [
+            {
+              id: "matched-friend-link-endpoint",
+              name: "Matched Friend Link Endpoint",
+              url: "https://example.com/friend-link",
+              enabled: true,
+              secret: "secret-1",
+              events: ["friend_link.submitted"],
+            },
+            {
+              id: "unmatched-friend-link-endpoint",
+              name: "Unmatched Friend Link Endpoint",
+              url: "https://example.com/comment",
+              enabled: true,
+              secret: "secret-2",
+              events: ["comment.admin_root_created"],
+            },
+          ],
+        },
+      });
+
+      vi.mocked(userContext.env.QUEUE.send).mockClear();
+
+      await FriendLinkService.submitFriendLink(userContext, {
+        siteName: "Webhook Filter Site",
+        siteUrl: "https://webhook-filter.com",
+        contactEmail: "contact@webhook-filter.com",
+      });
+
+      expect(userContext.env.QUEUE.send).toHaveBeenCalledTimes(1);
+      expect(userContext.env.QUEUE.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "WEBHOOK",
+          data: expect.objectContaining({
+            endpointId: "matched-friend-link-endpoint",
+            url: "https://example.com/friend-link",
+            event: expect.objectContaining({
+              type: "friend_link.submitted",
+            }),
+          }),
+        }),
+      );
+    });
+
+    it("should not send webhook to disabled endpoints", async () => {
+      await ConfigRepo.upsertSystemConfig(adminContext.db, {
+        ...DEFAULT_CONFIG,
+        notification: {
+          ...DEFAULT_CONFIG.notification,
+          admin: {
+            channels: {
+              email: false,
+              webhook: true,
+            },
+          },
+          webhooks: [
+            {
+              id: "disabled-friend-link-endpoint",
+              name: "Disabled Friend Link Endpoint",
+              url: "https://example.com/disabled",
+              enabled: false,
+              secret: "secret",
+              events: ["friend_link.submitted"],
+            },
+          ],
+        },
+      });
+
+      vi.mocked(userContext.env.QUEUE.send).mockClear();
+
+      await FriendLinkService.submitFriendLink(userContext, {
+        siteName: "Disabled Webhook Site",
+        siteUrl: "https://disabled-webhook.com",
+        contactEmail: "contact@disabled-webhook.com",
+      });
+
+      expect(userContext.env.QUEUE.send).not.toHaveBeenCalled();
     });
 
     it("should reject duplicate URL submission", async () => {
@@ -118,8 +258,8 @@ describe("FriendLinkService", () => {
         siteUrl: "https://admin-added.com",
       });
 
-      expect(result.data?.status).toBe("approved");
-      expect(result.data?.userId).toBeNull();
+      expect(result.status).toBe("approved");
+      expect(result.userId).toBeNull();
     });
 
     it("should invalidate cache on creation", async () => {
@@ -163,6 +303,33 @@ describe("FriendLinkService", () => {
       );
     });
 
+    it("should skip submitter email when user email notifications are disabled", async () => {
+      await ConfigRepo.upsertSystemConfig(adminContext.db, {
+        ...DEFAULT_CONFIG,
+        notification: {
+          ...DEFAULT_CONFIG.notification,
+          user: {
+            emailEnabled: false,
+          },
+        },
+      });
+
+      const submitted = await FriendLinkService.submitFriendLink(userContext, {
+        siteName: "Pending Site",
+        siteUrl: "https://pending-disabled.com",
+        contactEmail: "pending-disabled@example.com",
+      });
+
+      vi.mocked(adminContext.env.QUEUE.send).mockClear();
+
+      const result = await FriendLinkService.approveFriendLink(adminContext, {
+        id: submitted.data!.id,
+      });
+
+      expect(result.data?.status).toBe("approved");
+      expect(adminContext.env.QUEUE.send).not.toHaveBeenCalled();
+    });
+
     it("should reject a friend link with reason", async () => {
       const submitted = await FriendLinkService.submitFriendLink(userContext, {
         siteName: "To Reject",
@@ -192,6 +359,34 @@ describe("FriendLinkService", () => {
       );
     });
 
+    it("should skip rejection email when user email notifications are disabled", async () => {
+      await ConfigRepo.upsertSystemConfig(adminContext.db, {
+        ...DEFAULT_CONFIG,
+        notification: {
+          ...DEFAULT_CONFIG.notification,
+          user: {
+            emailEnabled: false,
+          },
+        },
+      });
+
+      const submitted = await FriendLinkService.submitFriendLink(userContext, {
+        siteName: "To Reject Disabled",
+        siteUrl: "https://toreject-disabled.com",
+        contactEmail: "reject-disabled@example.com",
+      });
+
+      vi.mocked(adminContext.env.QUEUE.send).mockClear();
+
+      const result = await FriendLinkService.rejectFriendLink(adminContext, {
+        id: submitted.data!.id,
+        rejectionReason: "Not suitable",
+      });
+
+      expect(result.data?.status).toBe("rejected");
+      expect(adminContext.env.QUEUE.send).not.toHaveBeenCalled();
+    });
+
     it("should return NOT_FOUND for non-existent friend link", async () => {
       const result = await FriendLinkService.approveFriendLink(adminContext, {
         id: 999999,
@@ -210,7 +405,7 @@ describe("FriendLinkService", () => {
       });
 
       const updated = await FriendLinkService.updateFriendLink(adminContext, {
-        id: created.data!.id,
+        id: created.id,
         siteName: "Updated Name",
         description: "Updated description",
       });
@@ -230,7 +425,7 @@ describe("FriendLinkService", () => {
 
       // Only update siteName
       const updated = await FriendLinkService.updateFriendLink(adminContext, {
-        id: created.data!.id,
+        id: created.id,
         siteName: "New Name",
       });
 
@@ -248,14 +443,14 @@ describe("FriendLinkService", () => {
       });
 
       const result = await FriendLinkService.deleteFriendLink(adminContext, {
-        id: created.data!.id,
+        id: created.id,
       });
 
       expect(result.data?.success).toBe(true);
 
       // Verify it's actually deleted
       const list = await FriendLinkService.getAllFriendLinks(adminContext, {});
-      expect(list.items.find((l) => l.id === created.data!.id)).toBeUndefined();
+      expect(list.items.find((l) => l.id === created.id)).toBeUndefined();
     });
 
     it("should return NOT_FOUND for non-existent ID", async () => {
@@ -310,7 +505,9 @@ describe("FriendLinkService", () => {
       // Query by status
       const approvedList = await FriendLinkService.getAllFriendLinks(
         adminContext,
-        { status: "approved" },
+        {
+          status: "approved",
+        },
       );
       expect(approvedList.items.every((l) => l.status === "approved")).toBe(
         true,
@@ -318,7 +515,9 @@ describe("FriendLinkService", () => {
 
       const rejectedList = await FriendLinkService.getAllFriendLinks(
         adminContext,
-        { status: "rejected" },
+        {
+          status: "rejected",
+        },
       );
       expect(rejectedList.items.every((l) => l.status === "rejected")).toBe(
         true,

@@ -1,10 +1,15 @@
+import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
 import { ClientOnly } from "@tanstack/react-router";
 import { Loader2, X } from "lucide-react";
-import { useState } from "react";
+import type { ComponentProps } from "react";
 import { createPortal } from "react-dom";
-import { useAdminFriendLinks } from "@/features/friend-links/hooks/use-friend-links";
+import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import type { CreateFriendLinkInput } from "@/features/friend-links/friend-links.schema";
+import { createCreateFriendLinkSchema } from "@/features/friend-links/friend-links.schema";
+import { useAdminFriendLinks } from "@/features/friend-links/hooks/use-friend-links";
+import { m } from "@/paraglide/messages";
 
 interface AddFriendLinkModalProps {
   isOpen: boolean;
@@ -16,33 +21,49 @@ const AddFriendLinkModalInternal = ({
   onClose,
 }: AddFriendLinkModalProps) => {
   const { create, isCreating } = useAdminFriendLinks();
-  const [formData, setFormData] = useState({
-    siteName: "",
-    siteUrl: "",
-    description: "",
-    logoUrl: "",
-    contactEmail: "",
-  });
-
-  const handleSubmit = async () => {
-    if (!formData.siteName || !formData.siteUrl) return;
-    await create({
-      data: {
-        siteName: formData.siteName,
-        siteUrl: formData.siteUrl,
-        description: formData.description || undefined,
-        logoUrl: formData.logoUrl || undefined,
-        contactEmail: formData.contactEmail || undefined,
-      },
-    });
-    setFormData({
+  const form = useForm<CreateFriendLinkInput>({
+    resolver: standardSchemaResolver(createCreateFriendLinkSchema(m)),
+    defaultValues: {
       siteName: "",
       siteUrl: "",
       description: "",
       logoUrl: "",
       contactEmail: "",
-    });
+    },
+  });
+  const {
+    register,
+    handleSubmit,
+    reset,
+    watch,
+    formState: { errors },
+  } = form;
+
+  const [siteName, siteUrl] = watch(["siteName", "siteUrl"]);
+
+  const handleClose = () => {
+    reset();
     onClose();
+  };
+
+  const onSubmit = (data: CreateFriendLinkInput) => {
+    create(
+      {
+        data: {
+          siteName: data.siteName,
+          siteUrl: data.siteUrl,
+          description: data.description || undefined,
+          logoUrl: data.logoUrl || undefined,
+          contactEmail: data.contactEmail || undefined,
+        },
+      },
+      {
+        onSuccess: () => {
+          reset();
+          onClose();
+        },
+      },
+    );
   };
 
   if (!isOpen) return null;
@@ -51,71 +72,74 @@ const AddFriendLinkModalInternal = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div
         className="fixed inset-0 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200"
-        onClick={onClose}
+        onClick={handleClose}
       />
       <div className="relative bg-background border border-border/30 p-8 max-w-md w-full mx-4 animate-in fade-in zoom-in-95 duration-200 shadow-lg">
         <button
-          onClick={onClose}
+          onClick={handleClose}
           className="absolute right-4 top-4 text-muted-foreground/50 hover:text-foreground transition-colors"
         >
           <X size={16} strokeWidth={1.5} />
         </button>
-        <h3 className="text-lg font-serif font-medium mb-6">添加友链</h3>
-        <p className="text-xs text-muted-foreground mb-6">
-          手动添加的友链将直接设为已通过状态。
+        <h3 className="text-xl font-serif font-medium mb-6">
+          {m.friend_links_add_modal_title()}
+        </h3>
+        <p className="text-sm text-muted-foreground mb-6">
+          {m.friend_links_add_modal_desc()}
         </p>
-        <div className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <ModalFormField
-            label="站点名称 *"
-            value={formData.siteName}
-            onChange={(v) => setFormData((p) => ({ ...p, siteName: v }))}
-            placeholder="例：我的博客"
+            label={m.friend_links_form_site_name()}
+            placeholder={m.friend_links_form_site_name_ph()}
+            error={errors.siteName?.message}
+            inputProps={register("siteName")}
           />
           <ModalFormField
-            label="站点地址 *"
-            value={formData.siteUrl}
-            onChange={(v) => setFormData((p) => ({ ...p, siteUrl: v }))}
-            placeholder="https://..."
+            label={m.friend_links_form_site_url()}
+            placeholder={m.friend_links_form_site_url_ph()}
+            error={errors.siteUrl?.message}
+            inputProps={register("siteUrl")}
           />
           <ModalFormField
-            label="站点简介"
-            value={formData.description}
-            onChange={(v) => setFormData((p) => ({ ...p, description: v }))}
-            placeholder="简要介绍该站点"
+            label={m.friend_links_form_desc()}
+            placeholder={m.friend_links_form_desc_ph()}
+            error={errors.description?.message}
+            inputProps={register("description")}
           />
           <ModalFormField
-            label="Logo 地址"
-            value={formData.logoUrl}
-            onChange={(v) => setFormData((p) => ({ ...p, logoUrl: v }))}
-            placeholder="https://..."
+            label={m.friend_links_form_logo()}
+            placeholder={m.friend_links_form_logo_ph()}
+            error={errors.logoUrl?.message}
+            inputProps={register("logoUrl")}
           />
           <ModalFormField
-            label="联系邮箱"
-            value={formData.contactEmail}
-            onChange={(v) => setFormData((p) => ({ ...p, contactEmail: v }))}
-            placeholder="可选"
+            label={m.friend_links_form_email()}
+            placeholder={m.friend_links_form_email_ph()}
+            error={errors.contactEmail?.message}
+            inputProps={register("contactEmail")}
           />
           <div className="flex justify-end gap-3 pt-4">
             <Button
+              type="button"
               variant="ghost"
-              onClick={onClose}
-              className="font-mono text-[10px] uppercase tracking-widest rounded-none"
+              onClick={handleClose}
+              className="font-mono text-xs uppercase tracking-widest rounded-none"
             >
-              取消
+              {m.friend_links_batch_cancel()}
             </Button>
             <Button
-              onClick={handleSubmit}
-              disabled={isCreating || !formData.siteName || !formData.siteUrl}
-              className="rounded-none bg-foreground text-background hover:bg-foreground/90 font-mono text-[10px] uppercase tracking-widest"
+              type="submit"
+              disabled={isCreating || !siteName.trim() || !siteUrl.trim()}
+              className="rounded-none bg-foreground text-background hover:bg-foreground/90 font-mono text-xs uppercase tracking-widest"
             >
               {isCreating ? (
                 <Loader2 size={12} className="animate-spin" />
               ) : (
-                "添加"
+                m.friend_links_add_modal_submit()
               )}
             </Button>
           </div>
-        </div>
+        </form>
       </div>
     </div>,
     document.body,
@@ -132,26 +156,26 @@ export function AddFriendLinkModal(props: AddFriendLinkModalProps) {
 
 function ModalFormField({
   label,
-  value,
-  onChange,
   placeholder,
+  error,
+  inputProps,
 }: {
   label: string;
-  value: string;
-  onChange: (value: string) => void;
   placeholder?: string;
+  error?: string;
+  inputProps: ComponentProps<typeof Input>;
 }) {
   return (
     <div className="space-y-1.5">
-      <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">
+      <label className="text-xs font-mono text-muted-foreground uppercase tracking-wider">
         {label}
       </label>
       <Input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
+        {...inputProps}
         placeholder={placeholder}
-        className="bg-transparent border-0 border-b border-border/50 text-sm px-0 rounded-none focus-visible:ring-0 focus-visible:border-foreground transition-all shadow-none h-auto py-1.5 placeholder:text-muted-foreground/30"
+        className="bg-transparent border-0 border-b border-border/50 text-base px-0 rounded-none focus-visible:ring-0 focus-visible:border-foreground transition-all shadow-none h-auto py-1.5 placeholder:text-muted-foreground/30"
       />
+      {error && <p className="text-xs text-red-500">! {error}</p>}
     </div>
   );
 }

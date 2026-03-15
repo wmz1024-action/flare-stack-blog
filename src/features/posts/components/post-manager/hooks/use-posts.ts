@@ -1,20 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { statusFilterToApi } from "../types";
+import {
+  deletePostFn,
+  getPostsCountFn,
+  getPostsFn,
+} from "@/features/posts/api/posts.admin.api";
+import { POSTS_KEYS } from "@/features/posts/queries";
+import { ADMIN_ITEMS_PER_PAGE } from "@/lib/constants";
+import { m } from "@/paraglide/messages";
 import type {
   PostListItem,
   SortDirection,
   SortField,
   StatusFilter,
 } from "../types";
-import {
-  deletePostFn,
-  getPostsCountFn,
-  getPostsFn,
-} from "@/features/posts/api/posts.admin.api";
-
-import { ADMIN_ITEMS_PER_PAGE } from "@/lib/constants";
-import { POSTS_KEYS } from "@/features/posts/queries";
+import { statusFilterToApi } from "../types";
 
 interface UsePostsOptions {
   page: number;
@@ -76,19 +76,30 @@ export function useDeletePost({ onSuccess }: UseDeletePostOptions = {}) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (post: PostListItem) => deletePostFn({ data: { id: post.id } }),
-    onSuccess: (_data, post) => {
+    mutationFn: async (post: PostListItem) => {
+      return {
+        post,
+        result: await deletePostFn({ data: { id: post.id } }),
+      };
+    },
+    onSuccess: ({ post, result }) => {
+      if (result.error) {
+        toast.error(m.admin_posts_toast_delete_failed(), {
+          description: m.admin_posts_toast_delete_failed_desc({
+            title: post.title,
+          }),
+        });
+        return;
+      }
+
       queryClient.invalidateQueries({ queryKey: POSTS_KEYS.adminLists });
       queryClient.invalidateQueries({ queryKey: POSTS_KEYS.counts });
-      toast.success("条目已删除", {
-        description: `条目 "${post.title}" 已删除成功`,
+      toast.success(m.admin_posts_toast_delete_success(), {
+        description: m.admin_posts_toast_delete_success_desc({
+          title: post.title,
+        }),
       });
       onSuccess?.();
-    },
-    onError: (_error, post) => {
-      toast.error("删除条目失败", {
-        description: `删除条目 "${post.title}" 失败`,
-      });
     },
   });
 }

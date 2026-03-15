@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { testRequest } from "tests/test-utils";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { app } from "@/lib/hono";
 
@@ -34,26 +34,30 @@ describe("Hono Integration Test", () => {
 
     const res = await testRequest(app, url, reqInit);
     expect(res.status).toBe(429);
-    expect(await res.json()).toEqual({ message: "Too Many Requests" });
+    expect(await res.json()).toEqual({
+      code: "RATE_LIMITED",
+      message: "Too Many Requests",
+      retryAfterMs: expect.any(Number),
+    });
     expect(res.headers.get("Retry-After")).toBeDefined();
   });
 
   describe("Security Shield", () => {
     it("should block malicious extension (.php) with 404", async () => {
       const res = await testRequest(app, "/index.php");
-      expect(res.status).toBe(403);
-      expect(await res.text()).toBe("Forbidden");
+      expect(res.status).toBe(404);
+      expect(await res.text()).toBe("Not Found");
     });
 
     it("should block suspicious AWS config path with 404", async () => {
       const res = await testRequest(app, "/.aws/config");
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(404);
     });
 
     it("should block unknown paths with 404 before triggering loader", async () => {
       const res = await testRequest(app, "/random-bad-path");
-      expect(res.status).toBe(403);
-      expect(await res.text()).toBe("Forbidden");
+      expect(res.status).toBe(404);
+      expect(await res.text()).toBe("Not Found");
     });
 
     it("should allow home page", async () => {
